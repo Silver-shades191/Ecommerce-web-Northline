@@ -1,0 +1,2 @@
+﻿import { Suspense } from "react";
+export default function Loading(){return <div className="page-shell loading-state" aria-label="Loading products"><div className="eyebrow">NORTHLINE FIELD GOODS</div><div className="skeleton skeleton-title"/><div className="skeleton-grid">{[1,2,3,4].map(x=><div key={x}><div className="skeleton skeleton-image"/><div className="skeleton skeleton-line"/><div className="skeleton skeleton-line short"/></div>)}</div></div>}

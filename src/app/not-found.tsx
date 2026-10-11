@@ -1,0 +1,1 @@
+﻿export default function NotFound(){return <section className="empty-state"><div className="eyebrow">404 / OFF THE MAP</div><h1>Nothing out here.</h1><p>This page may have moved, or the trail ends here.</p><a className="button button-dark" href="/shop">Find your way back</a></section>}

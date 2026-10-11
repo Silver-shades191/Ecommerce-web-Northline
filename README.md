@@ -1,4 +1,4 @@
-# Northline
+﻿# Northline
 
 A production-oriented e-commerce starter for modern outdoor essentials. Built with Next.js 15 App Router, TypeScript, Tailwind CSS, Prisma/PostgreSQL, Auth.js, Stripe Checkout, and Resend.
 
@@ -108,7 +108,6 @@ See [.env.example](./.env.example) for the complete template. Never commit `.env
 ## License
 
 Private starter project. Choose and add a license before public distribution.
-
 
 
 

@@ -1,0 +1,6 @@
+﻿import { z } from "zod";
+import { auth } from "@/lib/auth";
+import { db } from "@/lib/db";
+import { NextResponse } from "next/server";
+const schema=z.object({rating:z.number().int().min(1).max(5),title:z.string().trim().min(3).max(90),body:z.string().trim().min(10).max(1500)});
+export async function POST(req:Request,{params}:{params:Promise<{id:string}>}){const s=await auth();if(!s?.user)return NextResponse.json({error:"Sign in to leave a review."},{status:401});try{const {id}=await params;const product=await db.product.findUnique({where:{id}});if(!product||!product.active)return NextResponse.json({error:"Product not found."},{status:404});const purchased=await db.orderItem.findFirst({where:{productId:id,order:{userId:s.user.id,status:{in:["PAID","PROCESSING","SHIPPED","DELIVERED"]}}}});if(!purchased)return NextResponse.json({error:"Reviews are available to verified customers after purchase."},{status:403});const data=schema.parse(await req.json());const review=await db.review.create({data:{...data,userId:s.user.id,productId:id},select:{id:true,rating:true,title:true,body:true,createdAt:true,user:{select:{name:true}}}});return NextResponse.json(review,{status:201});}catch{return NextResponse.json({error:"You may have already reviewed this item, or the review details are invalid."},{status:400});}}

@@ -1,0 +1,2 @@
+﻿"use client";
+export default function ErrorPage({reset}:{error:Error&{digest?:string};reset:()=>void}){return <section className="empty-state"><div className="eyebrow">A SMALL DETOUR</div><h1>That didn’t go to plan.</h1><p>Something went wrong while loading this page. Try again or head back to the shop.</p><button className="button button-dark" onClick={reset}>Try again</button><a className="text-link" href="/shop">Back to the collection</a></section>}

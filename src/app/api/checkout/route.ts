@@ -1,0 +1,20 @@
+﻿import { auth } from "@/lib/auth";
+import { db } from "@/lib/db";
+import { stripe } from "@/lib/stripe";
+import { NextResponse } from "next/server";
+import { z } from "zod";
+import { enforceRateLimit } from "@/lib/security";
+const schema=z.object({items:z.array(z.object({id:z.string(),quantity:z.number().int().min(1).max(10),size:z.string().optional(),color:z.string().optional()})).min(1).max(30),coupon:z.string().max(40).optional()});
+export async function POST(req:Request){let orderId:string|undefined;try{
+ const session=await auth();if(!session?.user)return NextResponse.json({error:"Please sign in to continue."},{status:401});
+ await enforceRateLimit(`checkout:${session.user.id}`,8,900);
+ const body=schema.parse(await req.json());const ids=[...new Set(body.items.map(x=>x.id))];const products=await db.product.findMany({where:{id:{in:ids},active:true}});
+ if(products.length!==ids.length)return NextResponse.json({error:"One or more products are unavailable."},{status:400});
+ for(const item of body.items){const p=products.find(x=>x.id===item.id)!;if(item.quantity>p.inventory)return NextResponse.json({error:`Only ${p.inventory} ${p.name} available.`},{status:409});}
+ let coupon=null;if(body.coupon){coupon=await db.coupon.findUnique({where:{code:body.coupon.toUpperCase()}});if(!coupon||!coupon.active||(coupon.expiresAt&&coupon.expiresAt<new Date())||(coupon.maxUses!==null&&coupon.uses>=coupon.maxUses))return NextResponse.json({error:"That code is no longer available."},{status:400});}
+ const subtotal=body.items.reduce((sum,i)=>sum+products.find(p=>p.id===i.id)!.price*i.quantity,0);const discount=coupon?.percentOff?Math.round(subtotal*coupon.percentOff/100):coupon?.amountOff??0;const shipping=subtotal>=10000?0:800;const total=Math.max(0,subtotal-discount)+shipping;
+ const order=await db.order.create({data:{number:`NL-${Date.now().toString(36).toUpperCase()}-${crypto.randomUUID().slice(0,5).toUpperCase()}`,userId:session.user.id,subtotal,discount,shipping,total,items:{create:body.items.map(i=>{const p=products.find(p=>p.id===i.id)!;return {productId:p.id,name:p.name,quantity:i.quantity,unitPrice:p.price,size:i.size,color:i.color};})}}});orderId=order.id;
+ const origin=process.env.NEXT_PUBLIC_SITE_URL||new URL(req.url).origin;const checkout=await stripe.checkout.sessions.create({mode:"payment",customer_email:session.user.email||undefined,client_reference_id:order.id,metadata:{orderId:order.id,couponId:coupon?.id||""},line_items:[{quantity:1,price_data:{currency:"usd",unit_amount:Math.max(0,subtotal-discount),product_data:{name:`Northline order ${order.number}`,description:`${body.items.reduce((s,i)=>s+i.quantity,0)} items`}}}],shipping_address_collection:{allowed_countries:["US","CA","GB"]},shipping_options:[{shipping_rate_data:{display_name:shipping===0?"Complimentary shipping":"Standard shipping",type:"fixed_amount",fixed_amount:{amount:shipping,currency:"usd"},delivery_estimate:{minimum:{unit:"business_day",value:3},maximum:{unit:"business_day",value:7}}}}],success_url:`${origin}/checkout/success?session_id={CHECKOUT_SESSION_ID}`,cancel_url:`${origin}/cart?cancelled=1`});
+ try{await db.$transaction(async tx=>{for(const item of body.items){const reserved=await tx.product.updateMany({where:{id:item.id,active:true,inventory:{gte:item.quantity}},data:{inventory:{decrement:item.quantity}}});if(reserved.count!==1)throw new Error("INVENTORY_CHANGED");}await tx.order.update({where:{id:order.id},data:{stripeSessionId:checkout.id}});});}catch{await stripe.checkout.sessions.expire(checkout.id).catch(()=>{});await db.order.update({where:{id:order.id},data:{status:"CANCELLED"}});return NextResponse.json({error:"Inventory changed while you were checking out. Please review your bag."},{status:409});}
+ return NextResponse.json({url:checkout.url});
+ }catch(e){if(orderId)await db.order.updateMany({where:{id:orderId,status:"PENDING"},data:{status:"CANCELLED"}}).catch(()=>{});console.error("checkout_error",e);return NextResponse.json({error:e instanceof Error&&e.message==="RATE_LIMITED"?"Too many checkout attempts. Please wait.":"Unable to start checkout. Please try again."},{status:400});}}

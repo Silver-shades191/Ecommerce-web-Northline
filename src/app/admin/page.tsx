@@ -1,0 +1,8 @@
+﻿import { redirect } from "next/navigation";
+import { auth } from "@/lib/auth";
+import { db } from "@/lib/db";
+import { money } from "@/lib/format";
+import { ProductAdminForm,ProductAdminRow,OrderStatusButton } from "@/components/admin-controls";
+export default async function Admin(){const s=await auth();if(!s?.user)redirect("/login");if(s.user.role!=="ADMIN")redirect("/account");const [products,orders,users]=await Promise.all([db.product.findMany({orderBy:{createdAt:"desc"}}),db.order.findMany({include:{user:true,items:true},orderBy:{createdAt:"desc"},take:25}),db.user.count()]);const revenue=orders.filter(o=>["PAID","PROCESSING","SHIPPED","DELIVERED"].includes(o.status)).reduce((a,o)=>a+o.total,0);return <div className="page-shell admin-page"><div className="eyebrow">NORTHLINE / OPERATIONS</div><h1>Admin dashboard.</h1><div className="stats-grid"><div><span>Catalog</span><b>{products.length}</b></div><div><span>Orders</span><b>{orders.length}</b></div><div><span>Customers</span><b>{users}</b></div><div><span>Recent sales</span><b>{money(revenue)}</b></div></div><div className="admin-columns"><section className="account-panel"><h2>Products</h2><div className="admin-product-list">{products.map(p=><ProductAdminRow key={p.id} id={p.id} name={p.name} price={p.price} inventory={p.inventory} active={p.active}/>)}</div></section><ProductAdminForm/></div><section className="account-panel admin-orders"><h2>Recent orders</h2>{orders.length?orders.map(o=><div className="admin-order-row" key={o.id}><span><b>#{o.number}</b><small>{o.user.email} · {o.items.length} lines</small></span><b>{money(o.total)}</b><OrderStatusButton id={o.id} status={o.status}/></div>):<p className="subtle">No orders yet.</p>}</section></div>}
+
+

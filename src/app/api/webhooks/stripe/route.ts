@@ -1,0 +1,10 @@
+﻿import { stripe } from "@/lib/stripe";
+import { db } from "@/lib/db";
+import { sendEmail } from "@/lib/email";
+import { headers } from "next/headers";
+import { NextResponse } from "next/server";
+export async function POST(req:Request){const body=await req.text();const signature=(await headers()).get("stripe-signature");if(!signature||!process.env.STRIPE_WEBHOOK_SECRET)return NextResponse.json({error:"Webhook is not configured."},{status:400});let event;try{event=stripe.webhooks.constructEvent(body,signature,process.env.STRIPE_WEBHOOK_SECRET)}catch{return NextResponse.json({error:"Invalid signature."},{status:400});}
+ if(event.type==="checkout.session.completed"){const session=event.data.object;const id=session.metadata?.orderId;if(id){const order=await db.order.findUnique({where:{id},include:{items:true,user:true}});if(order){const address=session.shipping_details?.address;const changed=await db.order.updateMany({where:{id,status:"PENDING"},data:{status:"PAID",stripePaymentIntent:typeof session.payment_intent==="string"?session.payment_intent:null,shippingAddress:address?JSON.parse(JSON.stringify(address)):undefined}});if(changed.count===1){if(session.metadata?.couponId)await db.coupon.update({where:{id:session.metadata.couponId},data:{uses:{increment:1}}});await sendEmail(order.user.email,`Northline order ${order.number} confirmed`,`<h1>Thanks for getting out there.</h1><p>Your order ${order.number} is confirmed. We’ll send tracking details when it ships.</p>`).catch(console.error);}}}}
+ if(event.type==="checkout.session.expired"){const session=event.data.object;const id=session.metadata?.orderId;if(id){const order=await db.order.findUnique({where:{id},include:{items:true}});if(order){await db.$transaction(async tx=>{const changed=await tx.order.updateMany({where:{id,status:"PENDING"},data:{status:"CANCELLED"}});if(changed.count===1){for(const item of order.items)await tx.product.update({where:{id:item.productId},data:{inventory:{increment:item.quantity}}});}});}}}
+ return NextResponse.json({received:true});}
+

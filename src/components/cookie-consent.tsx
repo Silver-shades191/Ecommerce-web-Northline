@@ -1,0 +1,4 @@
+﻿"use client";
+import { useEffect,useState } from "react";
+import { Cookie } from "lucide-react";
+export function CookieConsent(){const [show,setShow]=useState(false);useEffect(()=>{setShow(!localStorage.getItem("northline-consent"));},[]);if(!show)return null;function choose(value:string){localStorage.setItem("northline-consent",value);setShow(false);}return <aside className="cookie-banner" aria-label="Cookie preferences"><div className="cookie-icon"><Cookie size={19}/></div><div><b>Your privacy matters.</b><p>We use essential cookies to keep your bag and account working. Optional analytics are off.</p><a href="/privacy">Privacy details</a></div><button className="cookie-secondary" onClick={()=>choose("essential")}>Essential only</button><button className="cookie-primary" onClick={()=>choose("all")}>Accept</button></aside>}
